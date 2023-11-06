@@ -368,6 +368,8 @@ segment code
 				loop    LN33
 ;Código principal
 main_loop:
+	call check_is_tied
+	return_check_is_tied:
 
 	mov dh, 8 ;linha 0-29
 	mov dl, 1 ;coluna 0-79
@@ -377,13 +379,42 @@ main_loop:
 	mov ah, 0Ah
 	mov dx, key_jogada
 	int 21h
-	
+
 	;Limpa campo de mensagem
 	call clear_message_field
 	;Limpa terminal onde foi digitado o comando
 	call clear_terminal
 
-	;Imprime comanddo na barra de comando
+	cmp byte[victorious_player], 0
+	jne jmp_bridge_novo_jogo
+
+
+	cmp byte[is_tied], 1
+	je jmp_bridge_novo_jogo
+
+	call print_last_command
+
+	mov bx, 2
+	mov al, 'C'
+	cmp al, [key_jogada + bx] ; compara a primeira letra da string com 'C'
+	je jmp_bridge_jogada_circulo ; caso seja igual a 'C' pule para a jogada_circulo
+	
+	mov al, 'X'
+	cmp al, [key_jogada + bx] ; compara a primeira letra da string com X
+	je jmp_bridge_jogada_x	 ; caso seja igual a 'X' pule para a jogada_circulo
+
+ 	mov al, 'c'
+	cmp al, [key_jogada + bx] ; compara a primeira letra da string com 'c'
+	je	jmp_bridge_novo_jogo ; caso seja igual a 'c' começa um novo jogo
+	
+	mov al, 's'
+	cmp al, [key_jogada + bx] ; compara a primeira letra da string com 's'
+	je	exit_game ; caso seja igual a 's', saia do programa
+
+	jmp command_invalid
+jmp_bridge_novo_jogo:
+	call novo_jogo
+print_last_command:
 	mov 			bx, 2
 	mov			  cx, 3 ; Carrega o tamanho da string em CX
 	mov     	dh,26								;linha 0-29
@@ -398,38 +429,78 @@ main_loop:
 		inc			dl			;avanca a coluna
 		
 	loop    loop_print_last_command
-	
-	mov bx, 2
-	mov al, 'C'
-	cmp al, [key_jogada + bx] ; compara a primeira letra da string com 'C'
-	je jmp_bridge_jogada_circulo ; caso seja igual a 'C' pule para a jogada_circulo
-	
-	mov al, 'X'
-	cmp al, [key_jogada + bx] ; compara a primeira letra da string com X
-	je jmp_bridge_jogada_x	 ; caso seja igual a 'X' pule para a jogada_circulo
+	ret
 
- 	mov al, 'c'
-	cmp al, [key_jogada + bx] ; compara a primeira letra da string com 'c'
-	je	novo_jogo ; caso seja igual a 'c' começa um novo jogo
-	
-	mov al, 's'
-	cmp al, [key_jogada + bx] ; compara a primeira letra da string com 's'
-	je	exit_game ; caso seja igual a 's', saia do programa
-
-	jmp main_loop	; 
 exit_game:
+	call clear_command_field  ;Limpa campo de comando
 	int     21h
   mov  	ah,0   			; set video mode
   mov  	al,[modo_anterior]   	; modo anterior
   int  	10h
 	mov     ax,4c00h
 	int     21h
+command_invalid:
+	
+	call clear_command_field ; Apaga comando
+
+	mov 			bx, 0
+	mov			  cx, 16 								;Carrega o tamanho da string em CX
+	mov     	dh, 28								;linha 0-29
+	mov     	dl, 21								;coluna 0-79
+	mov		byte[cor],vermelho
+		
+	loop_command_invalid:
+		call		cursor
+		mov     al,	[bx+string_invalid_command]
+		call		caracter
+		inc     bx			;proximo caracter
+		inc			dl			;avanca a coluna
+			
+	loop    loop_command_invalid
+	jmp main_loop
+
 jmp_bridge_jogada_x:
 	call jogada_x
 jmp_bridge_jogada_circulo:
 	call jogada_circulo
 
+check_is_tied:
+		cmp byte[cell11], 0
+		je jmp_bridge_return_check_is_tied
+
+		cmp byte[cell12], 0
+		je jmp_bridge_return_check_is_tied
+
+		cmp byte[cell13], 0
+		je jmp_bridge_return_check_is_tied
+
+		cmp byte[cell21], 0
+		je jmp_bridge_return_check_is_tied
+
+		cmp byte[cell22], 0
+		je jmp_bridge_return_check_is_tied
+
+		cmp byte[cell23], 0
+		je jmp_bridge_return_check_is_tied
+
+		cmp byte[cell31], 0
+		je jmp_bridge_return_check_is_tied
+
+		cmp byte[cell32], 0
+		je jmp_bridge_return_check_is_tied
+
+		cmp byte[cell33], 0
+		je jmp_bridge_return_check_is_tied
+
+		mov byte[is_tied], 1
+		call print_tied
+
+		jmp return_check_is_tied
+jmp_bridge_return_check_is_tied:
+	jmp return_check_is_tied
 novo_jogo:
+		call clear_command_field ;Limpa o campo de comando
+
 		mov		byte[cor],preto
 		;LIMPA CIRCULOS
 		call circle11
@@ -455,7 +526,14 @@ novo_jogo:
 
 		;LIMPA LINHAS DE VITÓRIA
 		call SVL1
-
+		call SVL2
+		call SVL3
+		call SVC1
+		call SVC2
+		call SVC3
+		call SVD1
+		call SVD2
+		
 		;LIMPA CELULAS 
 		mov byte[cell11], 0
 		mov byte[cell12], 0
@@ -467,9 +545,10 @@ novo_jogo:
 		mov byte[cell32], 0
 		mov byte[cell33], 0
 
-		;LIMPA REGISTROS DE ÚLTIMA JOGADA E GANHADOR
+		;LIMPA REGISTROS DE ÚLTIMA JOGADA 
 		mov byte[last_player], 0
 		mov byte[victorious_player], 0	
+		mov byte[is_tied], 0
 		
 		jmp print_tic_tac_toe;
 		;;limpa jogas na tela
@@ -490,6 +569,22 @@ clear_message_field:
 			inc			dl			;avanca a coluna
 			
 		loop    loop_print_clear_message_field
+	ret
+clear_command_field:
+	mov 			bx, 0
+	mov			  cx, 3 							;carrega o tamanho da string em CX
+	mov     	dh,26								;linha 0-29
+	mov     	dl,19								;coluna 0-79
+	mov		byte[cor],preto
+	
+	loop_clear_command_field:
+		call		cursor
+		mov     al,	[bx+string_empty_command]
+		call		caracter
+		inc     bx			;proximo caracter
+		inc			dl			;avanca a coluna
+		
+	loop    loop_clear_command_field
 	ret
 jogada_circulo:
 		mov al, [last_player]
@@ -514,7 +609,7 @@ jogada_circulo:
 		cmp al, 3
 		je jmp_bridge_c3
 
-		jmp main_loop	
+		jmp command_invalid	
 		jmp_bridge_c2:
 			call jmp_intermediary_C2
 		jmp_bridge_c3:
@@ -542,7 +637,7 @@ jogada_x:
 		cmp al, 3
 		je jmp_bridge_x3
 
-		jmp main_loop	
+		jmp command_invalid	
 
 		jmp_bridge_x1:
 			call jmp_intermediary_X1
@@ -551,22 +646,22 @@ jogada_x:
 		jmp_bridge_x3:
 			call jmp_intermediary_X3
 jogada_repetida:
-		;Imprime mensagem de jogada repetida na barra de mensagem
-		mov 			bx, 0
-		mov			  cx, 35 								;Carrega o tamanho da string em CX
-		mov     	dh, 28								;linha 0-29
-		mov     	dl, 21								;coluna 0-79
-		mov		byte[cor],vermelho
+	;Imprime mensagem de jogada repetida na barra de mensagem
+	mov 			bx, 0
+	mov			  cx, 15 								;Carrega o tamanho da string em CX
+	mov     	dh, 28								;linha 0-29
+	mov     	dl, 21								;coluna 0-79
+	mov		byte[cor],vermelho
 		
 	loop_print_jogada_repetida:
-			call		cursor
-			mov     al,	[bx+string_invalid_player]
-			call		caracter
-			inc     bx			;proximo caracter
-			inc			dl			;avanca a coluna
+		call		cursor
+		mov     al,	[bx+string_invalid_player]
+		call		caracter
+		inc     bx			;proximo caracter
+		inc			dl			;avanca a coluna
 			
 	loop    loop_print_jogada_repetida
-		jmp main_loop
+	jmp main_loop
 jmp_intermediary_C1:
 		mov bx, 4
 		mov al,[bx+key_jogada]
@@ -584,16 +679,16 @@ jmp_intermediary_C1:
 		cmp al, 3
 		je jmp_intermediary_C13
 		
-		jmp main_loop
+		jmp command_invalid
 	jmp_intermediary_C11:
 			cmp byte[cell11], 0	
 			jne jmp_bridge_print_occupied_cell
 
-			mov byte[last_player], 'C' ;Set como último jogador o 'C'
-		  mov byte[cell11], 'C' ; Seta na celula 11 a jogada C
+			mov byte[last_player], 'C' 			;Set como último jogador o 'C'
+		  mov byte[cell11], 'C' 					;Seta na celula 11 a jogada C
 
 			call circle11
-			call check_if_anyone_won
+			call check_if_C_won 				;Checa se alguém ganhou
 			jmp main_loop
 		jmp_bridge_print_occupied_cell: ;ponte para a função principal
 			call print_occupied_cell
@@ -601,22 +696,22 @@ jmp_intermediary_C1:
 			cmp byte[cell12], 0	
 			jne jmp_bridge_print_occupied_cell
 
-			mov byte[last_player], 'C' ;Set como último jogador o 'C'
-			mov byte[cell12], 'C' ; Seta na celula 12 a jogada C
+			mov byte[last_player], 'C' 			;Set como último jogador o 'C'
+			mov byte[cell12], 'C' 					;Seta na celula 12 a jogada C
 
 			call circle12
-			call check_if_anyone_won
+			call check_if_C_won 				;Checa se alguém ganhou
 
 			jmp main_loop
 	jmp_intermediary_C13:
 			cmp byte[cell13], 0
 			jne jmp_bridge_print_occupied_cell
 
-			mov byte[last_player], 'C' ;Set como último jogador o 'C'
-			mov byte[cell13], 'C' ; Seta na celula 13 a jogada C
+			mov byte[last_player], 'C' 			;Set como último jogador o 'C'
+			mov byte[cell13], 'C' 					;Seta na celula 13 a jogada C
 
 			call circle13
-			call check_if_anyone_won
+			call check_if_C_won 				;Checa se alguém ganhou
 			jmp main_loop
 jmp_intermediary_C2:
 		mov bx, 4
@@ -635,35 +730,41 @@ jmp_intermediary_C2:
 		cmp al, 3
 		je jmp_intermediary_C23
 
-		jmp main_loop
+	  jmp command_invalid
 	jmp_intermediary_C21:
 			cmp byte[cell21], 0	
 			jne jmp_bridge_print_occupied_cell
 
-			mov byte[last_player], 'C' ;Set como último jogador o 'C'
-			mov byte[cell21], 'C' ; Seta na celula 21 a jogada C
+			mov byte[last_player], 'C' 			;Set como último jogador o 'C'
+			mov byte[cell21], 'C' 					;Seta na celula 21 a jogada C
 
 			call circle21
+			call check_if_C_won 				;Checa se alguém ganhou
 			jmp main_loop
 	jmp_intermediary_C22:
 			cmp byte[cell22], 0	
 			jne jmp_bridge_print_occupied_cell
 
-			mov byte[last_player], 'C' ;Set como último jogador o 'C'
-			mov byte[cell22], 'C' ; Seta na celula 22 a jogada C
+			mov byte[last_player], 'C' 			;Set como último jogador o 'C'
+			mov byte[cell22], 'C' 					;Seta na celula 22 a jogada C
 
 			call circle22
+			call check_if_C_won 				;Checa se alguém ganhou
 			jmp main_loop
 	jmp_intermediary_C23:
 			cmp byte[cell23], 0	
-			jne print_occupied_cell
+			jne jmp_bridge_3_print_occupied_cell
 
-			mov byte[last_player], 'C' ;Set como último jogador o 'C'
-			mov byte[cell23], 'C' ; Seta na celula 23 a jogada C
+			mov byte[last_player], 'C' 			;Set como último jogador o 'C'
+			mov byte[cell23], 'C' 					;Seta na celula 23 a jogada C
 
 			call circle23
+	  ganhou								
+			call check_if_C_won 				;Checa se alguém ganhou
 			jmp main_loop
 
+			jmp_bridge_3_print_occupied_cell:
+				call print_occupied_cell
 jmp_intermediary_C3:
 		mov bx, 4
 		mov al,[bx+key_jogada]
@@ -681,34 +782,37 @@ jmp_intermediary_C3:
 		cmp al, 3
 		je jmp_intermediary_C33
 
-		jmp main_loop
+	 jmp command_invalid
 
 	jmp_intermediary_C31:
 			cmp byte[cell31], 0	
 			jne print_occupied_cell
 
-			mov byte[last_player], 'C' ;Set como último jogador o 'C'
-			mov byte[cell31], 'C' ; Seta na celula 31 a jogada C
+			mov byte[last_player], 'C' 			;Set como último jogador o 'C'
+			mov byte[cell31], 'C' 					;Seta na celula 31 a jogada C
 
 			call circle31
+			call check_if_C_won 				;Checa se alguém ganhou
 			jmp main_loop
 	jmp_intermediary_C32:
 			cmp byte[cell32], 0	
 			jne print_occupied_cell
 
-			mov byte[last_player], 'C' ;Set como último jogador o 'C'
-			mov byte[cell32], 'C' ; Seta na celula 32 a jogada C
+			mov byte[last_player], 'C' 			;Set como último jogador o 'C'
+			mov byte[cell32], 'C' 					;Seta na celula 32 a jogada C
 
 			call circle32
+			call check_if_C_won 				;Checa se alguém ganhou
 			jmp main_loop
 	jmp_intermediary_C33:
 			cmp byte[cell33], 0	
 			jne print_occupied_cell
 
-			mov byte[last_player], 'C' ;Set como último jogador o 'C'
-			mov byte[cell33], 'C' ; Seta na celula 33 a jogada C
+			mov byte[last_player], 'C' 			;Set como último jogador o 'C'
+			mov byte[cell33], 'C' 					;Seta na celula 33 a jogada C
 
 			call circle33
+			call check_if_C_won 				;Checa se alguém ganhou
 			jmp main_loop
 print_occupied_cell:
 	push ax
@@ -717,19 +821,19 @@ print_occupied_cell:
 	push dx
 
 		mov				bx, 0
-		mov			  cx, 14 								;Carrega o tamanho da string em CX
+		mov			  cx, 15 								;Carrega o tamanho da string em CX
 		mov     	dh, 28								;linha 0-29
 		mov     	dl, 21								;coluna 0-79
 		mov		byte[cor],vermelho
 		
-		loop_teste:
+		loop_print_occupied_cell:
 			call		cursor
 			mov     al,	[bx+string_occupied_cell]
 			call		caracter
 			inc     bx			;proximo caracter
-			inc			dl			;avanca a coluna
+			inc			dl			;avanca a colunaS
 			
-		loop    loop_teste
+		loop    loop_print_occupied_cell
 	
 	pop dx
 	pop cx
@@ -754,7 +858,7 @@ jmp_intermediary_X1:
 		cmp al, 3
 		je jmp_intermediary_X13
 
-		jmp main_loop
+		jmp command_invalid
 	jmp_intermediary_X11:
 			cmp byte[cell11], 0	
 			jne print_occupied_cell
@@ -763,6 +867,7 @@ jmp_intermediary_X1:
 			mov byte[cell11], 'X' ; Seta na celula 11 a jogada 'X'
 
 			call x11
+			call check_if_X_won
 			jmp main_loop
 	jmp_intermediary_X12:
 			cmp byte[cell12], 0	
@@ -772,6 +877,7 @@ jmp_intermediary_X1:
 			mov byte[cell12], 'X' ; Seta na celula 12 a jogada 'X'
 
 			call x12
+			call check_if_X_won
 			jmp main_loop
 	jmp_intermediary_X13:
 			cmp byte[cell13], 0	
@@ -781,6 +887,7 @@ jmp_intermediary_X1:
 			mov byte[cell13], 'X' ; Seta na celula 13 a jogada 'X'
 
 			call x13
+			call check_if_X_won
 			jmp main_loop
 jmp_intermediary_X2:
 		mov bx, 4
@@ -799,7 +906,7 @@ jmp_intermediary_X2:
 		cmp al, 3
 		je jmp_intermediary_X23
 
-		jmp main_loop
+		jmp command_invalid
 	jmp_intermediary_X21:
 			cmp byte[cell21], 0	
 			jne jmp_bridge_2_print_occupied_cell
@@ -808,6 +915,7 @@ jmp_intermediary_X2:
 			mov byte[cell21], 'X' ; Seta na celula 21 a jogada 'X'
 			
 			call x21
+			call check_if_X_won
 			jmp main_loop
 	jmp_bridge_2_print_occupied_cell:
 		call print_occupied_cell
@@ -819,6 +927,7 @@ jmp_intermediary_X2:
 			mov byte[cell22], 'X' ; Seta na celula 22 a jogada 'X'
 
 			call x22
+			call check_if_X_won
 			jmp main_loop
 	jmp_intermediary_X23:
 			cmp byte[cell23], 0	
@@ -828,6 +937,7 @@ jmp_intermediary_X2:
 			mov byte[cell23], 'X' ; Seta na celula 23 a jogada 'X'
 
 			call x23
+			call check_if_X_won
 			jmp main_loop
 
 jmp_intermediary_X3:
@@ -847,7 +957,7 @@ jmp_intermediary_X3:
 		cmp al, 3
 		je jmp_intermediary_X33
 
-		jmp main_loop
+		jmp command_invalid
 	jmp_intermediary_X31:
 			cmp byte[cell31], 0	
 			jne jmp_bridge_2_print_occupied_cell
@@ -856,6 +966,7 @@ jmp_intermediary_X3:
 			mov byte[cell31], 'X' ; Seta na celula 31 a jogada 'X'
 
 			call x31
+			call check_if_X_won
 			jmp main_loop
 	jmp_intermediary_X32:
 			cmp byte[cell32], 0	
@@ -863,17 +974,22 @@ jmp_intermediary_X3:
 
 			mov byte[last_player], 'X' ;Set como último jogador o 'X'
 			mov byte[cell32], 'X' ; Seta na celula 32 a jogada 'X'
+			
 			call x32
+			call check_if_X_won
 			jmp main_loop
 	jmp_intermediary_X33:
 			cmp byte[cell33], 0	
-			jne jmp_bridge_2_print_occupied_cell
+			jne jmp_bridge_4_print_occupied_cell
 
 			mov byte[last_player], 'X' ;Set como último jogador o 'X'
 			mov byte[cell33], 'X' ; Seta na celula 33 a jogada 'X'
 
 			call x33
+			call check_if_X_won
 			jmp main_loop
+			jmp_bridge_4_print_occupied_cell:
+				call print_occupied_cell
 ;Desenhar circulos 
   circle11:
 		pushf
@@ -1238,102 +1354,354 @@ clear_terminal:
 	pop bx
 	ret
 		
-check_if_anyone_won:
+check_if_C_won:
 	; Checa para a linha 1
-		cmp byte[cell11], 'C' ;Verifica se cell11 é igual a C
-		je step_11
+		cmp byte[cell11], 'C' 										;Verifica se cell11 é igual a C
+		je step_11												
+		return_11:
 
+		cmp byte[cell12], 'C'											;Verifica se a cell12 é igual a C
+		je jmp_bridge_step_12
 		return_12:
 
-		cmp byte[cell12], 'C'; Verifica se a cell12 é igual a C
-		je step_12
-
+		cmp byte[cell13], 'C'											;Verifica se a cell13 é igual a C
+		je jmp_bridge_step_13 
 		return_13:
 
-		cmp byte[cell13], 'C'; Verifica se a cell13 é igual a C
-		je step_13  	
+		cmp byte[cell21], 'C'											;Verifica se a cell13 é igual a C
+		je jmp_bridge_step_21 
+		return_21:
+
+		cmp byte[cell31], 'C'											;Verifica se a cell13 é igual a C
+		je jmp_bridge_step_31 
+		return_31:
 
 		jmp main_loop
+		jmp_bridge_step_12:
+			call step_12
 
+		jmp_bridge_step_13:
+			call step_13
+
+		jmp_bridge_step_21:
+			call step_21
+
+		jmp_bridge_step_31:
+			call step_31
+		
 		step_11:
-			cmp byte[cell12], 'C'; Verifica se cell 12 é igual a C
+			cmp byte[cell12], 'C'										;Verifica se cell 12 é igual a C
 			je step_11_12
 			return_11_12:
 
-			cmp byte[cell21], 'C'; Verifica se cell 21 é igual a C
+			cmp byte[cell21], 'C'										;Verifica se cell 21 é igual a C
 			je step_11_21
 			return_11_21:
 
-			cmp byte[cell22], 'C'; Verifica se a cell 22 é igual a C
+			cmp byte[cell22], 'C'										;Verifica se a cell 22 é igual a C
 			je step_11_22
 			return_11_22:
 
-			jmp return_12
+			jmp return_11
 
 			step_11_12:
-				cmp byte[cell13], 'C'			; Verifica se cell 13 também é igual a C
-				je step_11_12_13					; Se for, chama a última etapa dessa sequencia
-				jmp main_loop;
+				cmp byte[cell13], 'C'									; Verifica se cell 13 também é igual a C
+				je step_11_12_13											; Se for, chama a última etapa dessa sequencia
+				jmp return_11_12    									; Se não, retorna para o endereço após a função
 
 				step_11_12_13: 
 					mov	 byte[cor],azul_claro 
-					call SVL1													;Imprime a linha 1
-					mov byte[victorious_player], 'C'	;Defini como vitorioso o jogador 'C'
+					call SVL1															;Imprime a linha 1
+					mov byte[victorious_player], 'C'			;Defini como vitorioso o jogador 'C'
 					call print_victory_for_player_C
-					jmp main_loop;										
+					jmp main_loop										
 
 			step_11_21:
-				cmp byte[cell31], 'C'; Verifica se a cell 31 também é igual a C
-				je jmp_bridge_SVC1   ; Se for, imprime a coluna 1
-				jmp main_loop;
-				jmp_bridge_SVC1:
-					call SVC1
+				cmp byte[cell31], 'C'										; Verifica se a cell 31 também é igual a C
+				je step_11_21_31   											; Se for, imprime a coluna 1
+				jmp return_11_21	
+
+				step_11_21_31:
+					mov	 byte[cor],azul_claro
+					call SVC1															;Imprime a coluna 1
+					mov byte[victorious_player], 'C'			;Defini como vitorioso o jogador 'C'
+					call print_victory_for_player_C				;Imprime quem venceu
+					jmp main_loop;
 			step_11_22:
-				cmp byte[cell33], 'C'; Verifica se a cell 33 também é igual a C
-				je jmp_bridge_SVD1 				; Se for, imprime a primeira diagonal
-				jmp main_loop;
-			
-				jmp_bridge_SVD1:
-					call SVD1
+				cmp byte[cell33], 'C'										; Verifica se a cell 33 também é igual a C
+				je step_11_22_33 												; Se for, imprime a primeira diagonal
+				jmp return_11_22;
+
+				step_11_22_33:
+					mov	 byte[cor],azul_claro
+					call SVD1															;Imprime a diagonal 1
+					mov byte[victorious_player], 'C'			;Defini como vitorioso o jogador 'C'
+					call print_victory_for_player_C				;Imprime quem venceu
+					jmp main_loop;
+
 		step_12:
-			cmp byte[cell22], 'C'; Verifica se cell22 é igual a C
+			cmp byte[cell22], 'C'											;Verifica se cell22 é igual a C
 			je step_12_22
-			jmp return_13
+			return_12_22:
+
+			jmp return_12
 
 			step_12_22:
-				cmp byte[cell32], 'C' ;Verifica se a cell32 tammbém é a igual 'C'
-				je jmp_bridge_SVC2         ;Se for, imprime a coluna 2
-				jmp main_loop;
+				cmp byte[cell32], 'C' 		 							;Verifica se a cell32 tammbém é a igual 'C'
+				je step_12_22_32        	 							
 
-				jmp_bridge_SVC2:
-					call SVC2
+				jmp return_12_22;
+
+				step_12_22_32:
+					mov	 byte[cor],azul_claro 
+					call SVC2															;Imprime a coluna 2
+					mov byte[victorious_player], 'C'			;Defini como vitorioso o jogador 'C'
+					call print_victory_for_player_C
+					jmp main_loop;						
 		step_13:
-			cmp byte[cell23], 'C'; Verifica se cell23 é igual a C
+			cmp byte[cell23], 'C'											;Verifica se cell23 é igual a C
 			je step_13_23
+			return_11_23:
 
-			cmp byte[cell22], 'C'; Verifica se a cell22 é igual a C
+			cmp byte[cell22], 'C'											;Verifica se a cell22 é igual a C
 			je step_13_22  
+			return_13_22:
 
-			jmp return_3
+			jmp return_13
 
 			step_13_23:
-				cmp byte[cell33], 'C' ;Verifica se a cell33 tammbém é a igual 'C'
-				je  jmp_bridge_SVC3         ;Se for, imprime a coluna 3
-				jmp main_loop
+				cmp byte[cell33], 'C'     							;Verifica se a cell33 tammbém é a igual 'C'
+				je  step_13_23_33         							;Se for, imprime a coluna 3
+				jmp return_11_23
 
-				jmp_bridge_SVC3:
-					call SVC3				
+				step_13_23_33: 
+					mov	 byte[cor],azul_claro 
+					call SVC3															;Imprime a coluna 3
+					mov byte[victorious_player], 'C'			;Defini como vitorioso o jogador 'C'
+					call print_victory_for_player_C
+					jmp main_loop
+			
 			step_13_22:
-				cmp byte[cell31], 'C' ;Verifica se a cell31 tammbém é a igual 'C'
-				je  jmp_bridge_SVD2         ;Se for, imprime a diagonal 2
-				jmp main_loop
+				cmp byte[cell31], 'C' 									;Verifica se a cell31 tammbém é a igual 'C'
+				je  step_13_22_31         							;Se for, imprime a diagonal 2
+				jmp return_13_22
 				
-				jmp_bridge_SVD2:
-					call SVD2	
-	;Checa para a linha 2
-		return_3:
+				step_13_22_31: 
+					mov	 byte[cor],azul_claro 
+					call SVD2															;Imprime a diagonal 2
+					mov byte[victorious_player], 'C'			;Defini como vitorioso o jogador 'C'
+					call print_victory_for_player_C
+					jmp main_loop;	
 
-	jmp main_loop 
+		step_21:
+			cmp byte[cell22], 'C'										;Verifica se cell 12 é igual a C
+			je step_21_22
+			return_21_22:
+
+			jmp return_21
+			step_21_22:
+				cmp byte[cell23], 'C'
+				je step_21_22_23
+
+				jmp return_21_22
+				step_21_22_23:
+					mov	 byte[cor],azul_claro 
+					call SVL2															;Imprime a linha 2
+					mov byte[victorious_player], 'C'			;Defini como vitorioso o jogador 'C'
+					call print_victory_for_player_C
+					jmp main_loop			
+		step_31:
+			cmp byte[cell32], 'C'										;Verifica se cell 12 é igual a C
+			je step_31_32
+			return_31_32:
+
+			jmp return_31
+			step_31_32:
+				cmp byte[cell33], 'C'
+				je step_31_32_33
+
+				jmp return_31_32
+				step_31_32_33:
+					mov	 byte[cor],azul_claro 
+					call SVL3															;Imprime a linha 2
+					mov byte[victorious_player], 'C'			;Defini como vitorioso o jogador 'C'
+					call print_victory_for_player_C
+					jmp main_loop
+	jmp main_loop
+check_if_X_won:
+	; Checa para a linha 1
+		cmp byte[cell11], 'X' 										;Verifica se cell11 é igual a C
+		je step_X_11												
+		return_X_11:
+
+		cmp byte[cell12], 'X'											;Verifica se a cell12 é igual a C
+		je jmp_bridge_step_X_12
+		return_X_12:
+
+		cmp byte[cell13], 'X'											;Verifica se a cell13 é igual a C
+		je jmp_bridge_step_X_13 
+		return_X_13:
+
+		cmp byte[cell21], 'X'											;Verifica se a cell13 é igual a C
+		je jmp_bridge_step_X_21 
+		return_X_21:
+
+		cmp byte[cell31], 'X'											;Verifica se a cell13 é igual a C
+		je jmp_bridge_step_X_31 
+		return_X_31:
+
+		jmp main_loop
+		jmp_bridge_step_X_12:
+			call step_X_12
+
+		jmp_bridge_step_X_13:
+			call step_X_13
+
+		jmp_bridge_step_X_21:
+			call step_X_21
+
+		jmp_bridge_step_X_31:
+			call step_X_31
+		
+		step_X_11:
+			cmp byte[cell12], 'X'										;Verifica se cell 12 é igual a C
+			je step_X_11_12
+			return_X_11_12:
+
+			cmp byte[cell21], 'X'										;Verifica se cell 21 é igual a C
+			je step_X_11_21
+			return_X_11_21:
+
+			cmp byte[cell22], 'X'										;Verifica se a cell 22 é igual a C
+			je step_X_11_22
+			return_X_11_22:
+
+			jmp return_X_11
+
+			step_X_11_12:
+				cmp byte[cell13], 'X'									; Verifica se cell 13 também é igual a C
+				je step_X_11_12_13											; Se for, chama a última etapa dessa sequencia
+				jmp return_X_11_12    									; Se não, retorna para o endereço após a função
+
+				step_X_11_12_13: 
+					mov	 byte[cor],azul_claro 
+					call SVL1															;Imprime a linha 1
+					mov byte[victorious_player], 'X'			;Defini como vitorioso o jogador 'C'
+					call print_victory_for_player_X
+					jmp main_loop										
+
+			step_X_11_21:
+				cmp byte[cell31], 'X'										; Verifica se a cell 31 também é igual a C
+				je step_X_11_21_31   											; Se for, imprime a coluna 1
+				jmp return_X_11_21	
+
+				step_X_11_21_31:
+					mov	 byte[cor],azul_claro
+					call SVC1															;Imprime a coluna 1
+					mov byte[victorious_player], 'X'			;Defini como vitorioso o jogador 'C'
+					call print_victory_for_player_X				;Imprime quem venceu
+					jmp main_loop;
+			step_X_11_22:
+				cmp byte[cell33], 'X'										; Verifica se a cell 33 também é igual a C
+				je step_X_11_22_33 												; Se for, imprime a primeira diagonal
+				jmp return_X_11_22;
+
+				step_X_11_22_33:
+					mov	 byte[cor],azul_claro
+					call SVD1															;Imprime a diagonal 1
+					mov byte[victorious_player], 'X'			;Defini como vitorioso o jogador 'C'
+					call print_victory_for_player_X				;Imprime quem venceu
+					jmp main_loop;
+
+		step_X_12:
+			cmp byte[cell22], 'X'											;Verifica se cell22 é igual a C
+			je step_X_12_22
+			return_X_12_22:
+
+			jmp return_X_12
+
+			step_X_12_22:
+				cmp byte[cell32], 'X' 		 							;Verifica se a cell32 tammbém é a igual 'C'
+				je step_X_12_22_32        	 							
+
+				jmp return_X_12_22;
+
+				step_X_12_22_32:
+					mov	 byte[cor],azul_claro 
+					call SVC2															;Imprime a coluna 2
+					mov byte[victorious_player], 'X'			;Defini como vitorioso o jogador 'C'
+					call print_victory_for_player_X
+					jmp main_loop;						
+		step_X_13:
+			cmp byte[cell23], 'X'											;Verifica se cell23 é igual a C
+			je step_X_13_23
+			return_X_11_23:
+
+			cmp byte[cell22], 'X'											;Verifica se a cell22 é igual a C
+			je step_X_13_22  
+			return_X_13_22:
+
+			jmp return_X_13
+
+			step_X_13_23:
+				cmp byte[cell33], 'X'     							;Verifica se a cell33 tammbém é a igual 'C'
+				je  step_X_13_23_33         							;Se for, imprime a coluna 3
+				jmp return_X_11_23
+
+				step_X_13_23_33: 
+					mov	 byte[cor],azul_claro 
+					call SVC3															;Imprime a coluna 3
+					mov byte[victorious_player], 'X'			;Defini como vitorioso o jogador 'C'
+					call print_victory_for_player_X
+					jmp main_loop
+			
+			step_X_13_22:
+				cmp byte[cell31], 'X' 									;Verifica se a cell31 tammbém é a igual 'C'
+				je  step_X_13_22_31         							;Se for, imprime a diagonal 2
+				jmp return_X_13_22
+				
+				step_X_13_22_31: 
+					mov	 byte[cor],azul_claro 
+					call SVD2															;Imprime a diagonal 2
+					mov byte[victorious_player], 'X'			;Defini como vitorioso o jogador 'C'
+					call print_victory_for_player_X
+					jmp main_loop;	
+
+		step_X_21:
+			cmp byte[cell22], 'X'										;Verifica se cell 12 é igual a C
+			je step_X_21_22
+			return_X_21_22:
+
+			jmp return_X_21
+			step_X_21_22:
+				cmp byte[cell23], 'X'
+				je step_X_21_22_23
+
+				jmp return_X_21_22
+				step_X_21_22_23:
+					mov	 byte[cor],azul_claro 
+					call SVL2															;Imprime a linha 2
+					mov byte[victorious_player], 'X'			;Defini como vitorioso o jogador 'C'
+					call print_victory_for_player_X
+					jmp main_loop			
+		step_X_31:
+			cmp byte[cell32], 'X'										;Verifica se cell 12 é igual a C
+			je step_X_31_32
+			return_X_31_32:
+
+			jmp return_X_31
+			step_X_31_32:
+				cmp byte[cell33], 'X'
+				je step_X_31_32_33
+
+				jmp return_X_31_32
+				step_X_31_32_33:
+					mov	 byte[cor],azul_claro 
+					call SVL3															;Imprime a linha 2
+					mov byte[victorious_player], 'X'			;Defini como vitorioso o jogador 'C'
+					call print_victory_for_player_X
+					jmp main_loop
+	jmp main_loop  
 	; CHECA PARA X
 ;Desenhar linha da seguencia vencedora
   ;Sequencia linha 1
@@ -1350,7 +1718,7 @@ check_if_anyone_won:
 			ret 
   ;Sequencia linha 2
     SVL2:
-        mov		byte[cor],azul_claro	
+	
         mov		ax,119
         push		ax
         mov		ax,280
@@ -1363,7 +1731,7 @@ check_if_anyone_won:
 				ret
   ;Sequencia linha 3
     SVL3:
-        mov		byte[cor],azul_claro	
+	
         mov		ax,119
         push		ax
         mov		ax,153
@@ -1375,8 +1743,7 @@ check_if_anyone_won:
         call		line
 				ret
   ;Sequencia coluna 1
-	 SVC1:
-      mov		byte[cor],azul_claro	
+	 SVC1:	
       mov		ax,182
       push		ax
       mov		ax,469
@@ -1388,8 +1755,7 @@ check_if_anyone_won:
       call		line
 			ret
 	;Sequencia coluna 2
-		SVC2:
-      mov		byte[cor],azul_claro	
+		SVC2:	
       mov		ax,308
       push		ax
       mov		ax,469
@@ -1402,7 +1768,7 @@ check_if_anyone_won:
 			ret
   ;Sequencia coluna 3
 		SVC3:
-				mov		byte[cor],azul_claro	
+	
 				mov		ax,434
 				push		ax
 				mov		ax,469
@@ -1414,8 +1780,7 @@ check_if_anyone_won:
 				call		line
 				ret
   ;Sequencia diagonal 1
-		SVD1:
-			mov		byte[cor],azul_claro	
+		SVD1:	
 			mov		ax,119
 			push		ax
 			mov		ax,469
@@ -1427,8 +1792,7 @@ check_if_anyone_won:
 			call		line
 			ret
   ;Sequencia diagonal 2
-		SVD2:
-			mov		byte[cor],azul_claro	
+		SVD2:	
 			mov		ax,497
 			push		ax
 			mov		ax,469
@@ -1439,7 +1803,7 @@ check_if_anyone_won:
 			push		ax
 			call		line
 			ret
-	;Imprime jogadores que venceu
+	;Imprime jogador que venceu ou empate
 		print_victory_for_player_C:
 			mov 			bx, 0
 			mov			  cx, 19 								;Carrega o tamanho da string em CX
@@ -1455,6 +1819,38 @@ check_if_anyone_won:
 				inc			dl			;avanca a coluna
 				
 			loop    loop_print_victory_for_player_C
+			ret
+		print_victory_for_player_X:
+			mov 			bx, 0
+			mov			  cx, 19 								;Carrega o tamanho da string em CX
+			mov     	dh, 28								;linha 0-29
+			mov     	dl, 21								;coluna 0-79
+			mov		byte[cor],verde
+			
+			loop_print_victory_for_player_X:
+				call		cursor
+				mov     al,	[bx+string_player_X_victory]
+				call		caracter
+				inc     bx			;proximo caracter
+				inc			dl			;avanca a coluna
+				
+			loop    loop_print_victory_for_player_X
+			ret
+		print_tied:
+			mov 			bx, 0
+			mov			  cx, 13 								;Carrega o tamanho da string em CX
+			mov     	dh, 28								;linha 0-29
+			mov     	dl, 21								;coluna 0-79
+			mov		byte[cor],amarelo
+			
+			loop_print_tied:
+				call		cursor
+				mov     al,	[bx+string_tied]
+				call		caracter
+				inc     bx			;proximo caracter
+				inc			dl			;avanca a coluna
+				
+			loop    loop_print_tied
 			ret
 	
 
@@ -2038,7 +2434,7 @@ deltay		dw			0
 
 ;keys			
 key_new_game			db	  'c'
-key_jogada				db		20
+key_jogada				db		4
 key_out_game			db		's'  
 
 ;Strings
@@ -2046,13 +2442,16 @@ string_terminal					db	'Terminal'
 string_game    					db  'JOGO DA VELHA'
 string_last_move 				db	'Campo de comando'
 string_message   				db  'Campo de mensagens'
-string_invalid_command	db 	'Comando Inválido'
+string_invalid_command	db 	'Comando Invalido'
 string_invalid_play			db 	'Jogada Inválida'
-string_occupied_cell    db  'Celula ocupada'
+string_occupied_cell    db  'Jogada Invalida'
 string_empty_terminal		db  '     '
-string_invalid_player   db  'O jogador nao pode repetir a jogada'
+string_invalid_player   db  'Jogada Invalida'
 string_empty_message    db 	'                                   '
+string_empty_command    db  '   '
 string_player_C_victory db  'O jogador C venceu!'
+string_player_X_victory db  'O jogador X venceu!'
+string_tied 						db  'Houve empate!'
 
 n11 										db  '11'
 n12 										db  '12'
@@ -2077,6 +2476,7 @@ cell33 db 0
 
 last_player db 0 ;Última jogador a jogar: 'C' ou 'X'
 victorious_player db 0 ;Jogador vencedor da rodada: 'C' ou 'X'
+is_tied db 0
 
 ;*************************************************************************
 segment stack stack
