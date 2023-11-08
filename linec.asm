@@ -385,16 +385,28 @@ main_loop:
 	;Limpa terminal onde foi digitado o comando
 	call clear_terminal
 
-	cmp byte[victorious_player], 0
-	jne jmp_bridge_novo_jogo
+	; cmp byte[victorious_player], 0
+	; jne jmp_bridge_novo_jogo
 
 
-	cmp byte[is_tied], 1
-	je jmp_bridge_novo_jogo
+
 
 	call print_last_command
-
 	mov bx, 2
+	mov al, 'c'
+	cmp al, [key_jogada + bx] ; compara a primeira letra da string com 'c'
+	je	jmp_bridge_novo_jogo ; caso seja igual a 'c' começa um novo jogo
+		
+	mov al, 's'
+	cmp al, [key_jogada + bx] ; compara a primeira letra da string com 's'
+	je	exit_game ; caso seja igual a 's', saia do programa
+
+	cmp byte[victorious_player], 0
+	jne jogo_encerrado
+	
+	cmp byte[is_tied], 1
+	je jogo_encerrado
+
 	mov al, 'C'
 	cmp al, [key_jogada + bx] ; compara a primeira letra da string com 'C'
 	je jmp_bridge_jogada_circulo ; caso seja igual a 'C' pule para a jogada_circulo
@@ -403,15 +415,31 @@ main_loop:
 	cmp al, [key_jogada + bx] ; compara a primeira letra da string com X
 	je jmp_bridge_jogada_x	 ; caso seja igual a 'X' pule para a jogada_circulo
 
- 	mov al, 'c'
-	cmp al, [key_jogada + bx] ; compara a primeira letra da string com 'c'
-	je	jmp_bridge_novo_jogo ; caso seja igual a 'c' começa um novo jogo
-	
-	mov al, 's'
-	cmp al, [key_jogada + bx] ; compara a primeira letra da string com 's'
-	je	exit_game ; caso seja igual a 's', saia do programa
+
+
 
 	jmp command_invalid
+jmp_bridge_jogada_circulo:
+	call jogada_circulo
+jogo_encerrado:
+	call clear_command_field ; Apaga comando
+
+	mov 			bx, 0
+	mov			  cx, 51 								;Carrega o tamanho da string em CX
+	mov     	dh, 28								;linha 0-29
+	mov     	dl, 21								;coluna 0-79
+	mov		byte[cor],amarelo
+		
+	loop_jogo_encerrado:
+		call		cursor
+		mov     al,	[bx+string_final_message]
+		call		caracter
+		inc     bx			;proximo caracter
+		inc			dl			;avanca a coluna
+			
+	loop    loop_jogo_encerrado
+	jmp main_loop
+
 jmp_bridge_novo_jogo:
 	call novo_jogo
 print_last_command:
@@ -433,7 +461,7 @@ print_last_command:
 
 exit_game:
 	call clear_command_field  ;Limpa campo de comando
-	int     21h
+	;int     21h
   mov  	ah,0   			; set video mode
   mov  	al,[modo_anterior]   	; modo anterior
   int  	10h
@@ -461,8 +489,7 @@ command_invalid:
 
 jmp_bridge_jogada_x:
 	call jogada_x
-jmp_bridge_jogada_circulo:
-	call jogada_circulo
+
 
 check_is_tied:
 		cmp byte[cell11], 0
@@ -491,6 +518,9 @@ check_is_tied:
 
 		cmp byte[cell33], 0
 		je jmp_bridge_return_check_is_tied
+
+		cmp byte[victorious_player], 0
+		jne jmp_bridge_return_check_is_tied
 
 		mov byte[is_tied], 1
 		call print_tied
@@ -556,7 +586,7 @@ novo_jogo:
 clear_message_field:
 	;Limpa campo de mensagem
 		mov 			bx, 0
-		mov			  cx, 35 								;Carrega o tamanho da string em CX
+		mov			  cx, 51 								;Carrega o tamanho da string em CX
 		mov     	dh, 28								;linha 0-29
 		mov     	dl, 21								;coluna 0-79
 		mov		byte[cor],preto
@@ -2447,11 +2477,12 @@ string_invalid_play			db 	'Jogada Inválida'
 string_occupied_cell    db  'Jogada Invalida'
 string_empty_terminal		db  '     '
 string_invalid_player   db  'Jogada Invalida'
-string_empty_message    db 	'                                   '
+string_empty_message    db 	'                                                   '
 string_empty_command    db  '   '
 string_player_C_victory db  'O jogador C venceu!'
 string_player_X_victory db  'O jogador X venceu!'
 string_tied 						db  'Houve empate!'
+string_final_message    db  'Favor, iniciar um novo jogo ou encerrar o programa!' ;;66
 
 n11 										db  '11'
 n12 										db  '12'
